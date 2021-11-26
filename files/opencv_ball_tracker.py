@@ -30,15 +30,16 @@ class PID_controller:
         ###EVERYTHING HERE MUST BE INCLUDED###
         self.target_pos = target_pos
 
+        # if you change these it won't affect anything
         self.Kp = 0.0
         self.Ki = 0.0
         self.Kd = 0.0
         self.bias = 0.0
-        #
+        # change these to affect results
         self.Kp = 6000
         self.Ki = 500
         self.Kd = 500
-        self.bias = 0.0
+        self.bias = 1380.0
 
         # self.Kp = 10000
         # self.Ki = 5000
@@ -58,6 +59,7 @@ class PID_controller:
 
         self.min = 1000000
         self.max = 0
+
         return
 
     def set_target(self, target_pos):
@@ -152,7 +154,20 @@ class PID_controller:
         fan_rpm = 0
         if self.last_t is not None:
             #TODO CHANGE THE CODE HERE
-            fan_rpm = 1 #DUMMY VALUE
+            error_vel = self.error_pos - self.last_error_pos
+
+            p_error = self.Kp * self.error_pos
+            i_error = self.acc_pos_error \
+                + self.Ki \
+                * (self.error_pos + self.last_error_pos) / 2 \
+                * (t - self.last_t)
+            d_error = self.Kd * error_vel / (t - self.last_t)
+            output = p_error + i_error + d_error
+            fan_rpm = output + self.bias
+
+            self.acc_pos_error = i_error
+            self.last_error_pos = self.error_pos
+            self.rpm_output = output
 
         self.last_t = t
         self.last_pos = pos
