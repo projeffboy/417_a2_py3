@@ -36,9 +36,9 @@ class PID_controller:
         self.Kd = 0.0
         self.bias = 0.0
         # change these to affect results
-        self.Kp = 6000
-        self.Ki = 500
-        self.Kd = 500
+        self.Kp = 6000.0
+        self.Ki = 500.0
+        self.Kd = 500.0
         self.bias = 1380.0
 
         # self.Kp = 10000
