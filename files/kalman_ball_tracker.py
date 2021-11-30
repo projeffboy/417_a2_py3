@@ -14,6 +14,7 @@ __copyright__ = "Copyright 2018, Travis Manderson"
 
 from helpers import *
 import simulation
+from helper import account_for_noise, pid
 
 import random
 import cv2
@@ -28,18 +29,17 @@ import time
 class PID_controller:
     def __init__(self, target_pos = -0.1):
         #TODO YOU CAN ADD new variables as needed
+        self.y_pred_prev = 485.0
+        self.v_pred_prev = 0.0
+        self.covariance_y_pred = 4.0
+        self.variance_y_observed = 4.0
 
         ###EVERYTHING HERE MUST BE INCLUDED###
         self.target_pos = target_pos
-
-        self.Kp = 0.0
-        self.Ki = 0.0
-        self.Kd = 0.0
-        self.bias = 0.0
-        #
-        self.Kp = 6000
-        self.Ki = 500
-        self.Kd = 500
+        
+        self.Kp = 10000.0
+        self.Ki = 2500.0
+        self.Kd = 1000.0
         self.bias = 0.0
 
         # self.Kp = 10000
@@ -79,9 +79,8 @@ class PID_controller:
         #TODO
         #TODO You are given a basic opencv ball tracker. However, this won't work well for the noisy case.
         #TODO Play around to get it working. You can reuse the one you implemented previously
+        bgr_color, thresh, frame = account_for_noise(frame)
 
-        bgr_color = 31, 0, 142
-        thresh = 100
         hsv_color = cv2.cvtColor(np.uint8([[bgr_color]]), cv2.COLOR_BGR2HSV)[0][0]
         HSV_lower = np.array([hsv_color[0] - thresh, hsv_color[1] - thresh, hsv_color[2] - thresh])
         HSV_upper = np.array([hsv_color[0] + thresh, hsv_color[1] + thresh, hsv_color[2] + thresh])
@@ -119,11 +118,43 @@ class PID_controller:
             pass
         return center[0], center[1]  # x, y , radius
 
+
+
     def get_kalman_filter_estimation(self, observation):
         #TODO Implement the kalman filter ...
         #observation is the estimated x,y position of the detect image
+        y_observed = observation[1]
+        t = time.time()
+        if self.last_t == None:
+            delta_t = 0
+        else:
+            delta_t = t - self.last_t
+        g = 9.81 # not negative because y coordinate is flipped
+        fan_accel = self.rpm_output / 1725 * g # around 1750 rpm when it breaks even with gravity
 
-        kalman_filter_estimate = [155, 0] #Return the kalman filter adjusted values
+        y_pred = self.y_pred_prev + self.v_pred_prev * delta_t + 0.5 * (g - fan_accel) * (delta_t ** 2)
+        y_pred = min(y_pred, 485) # prevent it from sinking down the cardboard
+
+
+        if y_pred == 485:
+            self.v_pred_prev *= -0.2
+        else:
+            self.v_pred_prev += (g - fan_accel) * delta_t # updating the current predicted velocity
+
+        if y_pred != 485:
+            self.covariance_y_pred += delta_t / 10 # every 10 seconds, variance increases
+
+        kalman_gain = (self.covariance_y_pred ** 2) \
+            / (self.covariance_y_pred ** 2 + self.variance_y_observed ** 2)
+
+        y_best_estimate = y_pred + kalman_gain * (y_observed - y_pred)
+        self.y_pred_prev = y_best_estimate
+
+        covariance_y_best_estimate = math.sqrt(
+            self.covariance_y_pred * (1 - kalman_gain)
+        )
+
+        kalman_filter_estimate = [155, y_best_estimate] #Return the kalman filter adjusted values
         return kalman_filter_estimate[0], kalman_filter_estimate[1]
 
 
@@ -161,11 +192,13 @@ class PID_controller:
         t = time.time()
         fan_rpm = 0
         if self.last_t is not None:
-            fan_rpm = 1
+            fan_rpm = pid(self, t)
+            self.rpm_output = fan_rpm
 
         self.last_t = t
         self.last_pos = pos
         self.last_error_pos = self.error_pos
+        fan_rpm = min(fan_rpm, 2428)
         # print('p_e: {:10.4f}, d_e: {:10.4f}, i_e: {:10.4f}, output: {:10.4f}'.format(p_error, d_error, i_error, output))
         return fan_rpm
 

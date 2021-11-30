@@ -14,6 +14,7 @@ __copyright__ = "Copyright 2018, Travis Manderson"
 
 from helpers import *
 import simulation
+from helper import account_for_noise, pid
 
 import random
 import cv2
@@ -30,16 +31,10 @@ class PID_controller:
         ###EVERYTHING HERE MUST BE INCLUDED###
         self.target_pos = target_pos
 
-        # if you change these it won't affect anything
-        self.Kp = 0.0
-        self.Ki = 0.0
-        self.Kd = 0.0
+        self.Kp = 10000.0
+        self.Ki = 2500.0
+        self.Kd = 1000.0
         self.bias = 0.0
-        # change these to affect results
-        self.Kp = 6000.0
-        self.Ki = 500.0
-        self.Kd = 500.0
-        self.bias = 1380.0
 
         # self.Kp = 10000
         # self.Ki = 5000
@@ -59,7 +54,6 @@ class PID_controller:
 
         self.min = 1000000
         self.max = 0
-
         return
 
     def set_target(self, target_pos):
@@ -79,9 +73,8 @@ class PID_controller:
         #TODO
         #You are given a basic opencv ball tracker. However, this won't work well for the noisy case.
         #Play around to get it working.
+        bgr_color, thresh, frame = account_for_noise(frame)
 
-        bgr_color = 31, 0, 142
-        thresh = 100
         hsv_color = cv2.cvtColor(np.uint8([[bgr_color]]), cv2.COLOR_BGR2HSV)[0][0]
         HSV_lower = np.array([hsv_color[0] - thresh, hsv_color[1] - thresh, hsv_color[2] - thresh])
         HSV_upper = np.array([hsv_color[0] + thresh, hsv_color[1] + thresh, hsv_color[2] + thresh])
@@ -119,7 +112,6 @@ class PID_controller:
             pass
         return center[0], center[1]  # x, y , radius
 
-
     # def get_fan_rpm(self, image_frame=None, position=None):
     def get_fan_rpm(self, image_frame=None, position=None):
         #TODO Get the FAN RPM to push the ball to the target position
@@ -154,24 +146,12 @@ class PID_controller:
         fan_rpm = 0
         if self.last_t is not None:
             #TODO CHANGE THE CODE HERE
-            error_vel = self.error_pos - self.last_error_pos
-
-            p_error = self.Kp * self.error_pos
-            i_error = self.acc_pos_error \
-                + self.Ki \
-                * (self.error_pos + self.last_error_pos) / 2 \
-                * (t - self.last_t)
-            d_error = self.Kd * error_vel / (t - self.last_t)
-            output = p_error + i_error + d_error
-            fan_rpm = output + self.bias
-
-            self.acc_pos_error = i_error
-            self.last_error_pos = self.error_pos
-            self.rpm_output = output
+            fan_rpm = pid(self, t)
 
         self.last_t = t
         self.last_pos = pos
         self.last_error_pos = self.error_pos
+        fan_rpm = min(fan_rpm, 2337)
         # print('p_e: {:10.4f}, d_e: {:10.4f}, i_e: {:10.4f}, output: {:10.4f}'.format(p_error, d_error, i_error, output))
         return fan_rpm
 
